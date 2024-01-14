@@ -92,6 +92,7 @@ char *list_file = NULL;
 int list_file_fd = -1;
 int do_build_id = 0;
 int no_recompute_build_id = 0;
+int fix_dos_paths = 0;
 char *build_id_seed = NULL;
 
 int show_version = 0;
@@ -984,6 +985,17 @@ canonicalize_path (const char *s, char *d)
   return rv;
 }
 
+/* Replaces \ directory separators with / */
+void
+fix_dir_separator (char *s)
+{
+  for (char *c = s; *c; c++) {
+    if (*c == '\\') {
+      *c = '/';
+    }
+  }
+}
+
 /* Returns the rest of PATH if it starts with DIR_PREFIX, skipping any
    / path separators, or NULL if PATH doesn't start with
    DIR_PREFIX. Might return the empty string if PATH equals DIR_PREFIX
@@ -1153,6 +1165,8 @@ record_file_string_entry_idx (bool line_strp, DSO *dso, size_t old_idx)
 
       Strent *strent;
       const char *old_str = (char *)sec->data + old_idx;
+      if (fix_dos_paths)
+        fix_dir_separator ((char *)old_str);
       const char *file = skip_dir_prefix (old_str, base_dir);
       if (file == NULL)
 	{
@@ -1514,6 +1528,8 @@ edit_dwarf2_line (DSO *dso)
 	  const char *file_path = NULL;
 	  if (t->replace_dirs)
 	    {
+              if (fix_dos_paths)
+                fix_dir_separator ((char *)dir);
 	      file_path = skip_dir_prefix (dir, base_dir);
 	      if (file_path != NULL)
 		{
@@ -1551,6 +1567,8 @@ edit_dwarf2_line (DSO *dso)
 	      const char *file_path = NULL;
 	      if (t->replace_files)
 		{
+                  if (fix_dos_paths)
+                    fix_dir_separator ((char *)file);
 		  file_path = skip_dir_prefix (file, base_dir);
 		  if (file_path != NULL)
 		    {
@@ -1753,6 +1771,8 @@ read_dwarf4_line (DSO *dso, unsigned char *ptr, char *comp_dir,
       if (base_dir && dest_dir)
 	{
 	  /* Do we need to replace any of the dirs? Calculate new size. */
+          if (fix_dos_paths)
+            fix_dir_separator ((char *)ptr);
 	  const char *file_path = skip_dir_prefix ((const char *)ptr,
 						   base_dir);
 	  if (file_path != NULL)
@@ -1802,6 +1822,8 @@ read_dwarf4_line (DSO *dso, unsigned char *ptr, char *comp_dir,
       if (base_dir && dest_dir)
 	{
 	  /* Do we need to replace any of the files? Calculate new size. */
+          if (fix_dos_paths)
+            fix_dir_separator ((char *)dir);
 	  const char *file_path = skip_dir_prefix (file, base_dir);
 	  if (file_path != NULL)
 	    {
@@ -2277,6 +2299,8 @@ edit_attributes (DSO *dso, unsigned char *ptr, struct abbrev_tag *t, int phase)
 	      if (form == DW_FORM_string)
 		{
 		  free (comp_dir);
+                  if (fix_dos_paths)
+                    fix_dir_separator ((char *)ptr);
 		  comp_dir = strdup ((char *)ptr);
 
 		  if (dest_dir)
@@ -3203,13 +3227,14 @@ static struct option optionsTable[] =
     { "build-id", no_argument, 0, 'i' },
     { "build-id-seed", required_argument, 0, 's' },
     { "no-recompute-build-id", no_argument, 0, 'n' },
+    { "fix-dos-paths", no_argument, 0, 'p' },
     { "version", no_argument, 0, 'V' },
     { "help", no_argument, 0, '?' },
     { "usage", no_argument, 0, 'u' },
     { NULL, 0, 0, 0 }
   };
 
-static const char *optionsChars = "b:d:l:is:nV?u";
+static const char *optionsChars = "b:d:l:is:npV?u";
 
 static const char *helpText =
   "Usage: %s [OPTION...] FILE\n"
@@ -3223,6 +3248,8 @@ static const char *helpText =
   "                                  this string as hash seed\n"
   "  -n, --no-recompute-build-id     do not recompute build ID note even\n"
   "                                  when -i or -s are given\n"
+  "  -p, --fix-dos-paths             convert dos directory separators (\\) to\n"
+  "                                  unix (/)\n"
   "\n"
   "Help options:\n"
   "  -?, --help                      Show this help message\n"
@@ -3233,8 +3260,9 @@ static const char *usageText =
   "Usage: %s [-in?] [-b|--base-dir STRING] [-d|--dest-dir STRING]\n"
   "        [-l|--list-file STRING] [-i|--build-id] \n"
   "        [-s|--build-id-seed STRING]\n"
-  "        [-n|--no-recompute-build-id] [-?|--help] [-u|--usage]\n"
-  "        [-V|--version] FILE\n";
+  "        [-n|--no-recompute-build-id]\n"
+  "        [-p|--fix-dos-paths]\n"
+  "        [-?|--help] [-u|--usage] [-V|--version] FILE\n";
 
 static void
 help (const char *progname, bool error)
@@ -3535,6 +3563,10 @@ main (int argc, char *argv[])
 	case 'n':
 	  no_recompute_build_id = 1;
 	  break;
+
+        case 'p':
+          fix_dos_paths = 1;
+          break;
 
 	case 'V':
 	  show_version = 1;
